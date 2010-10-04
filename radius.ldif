@@ -1,0 +1,11 @@
+dn: cn=Kiska,ou=People,dc=nordcomp,dc=ru
+objectClass: inetOrgPerson
+objectClass: radiusProfile
+cn: Kiska
+uid: Kiska
+sn: Kiska
+radiusAuthType: LDAP
+radiusFramedIPAddress: 192.168.0.105
+radiusSessionTimeout: 16000
+radiusIdleTimeout: 600
+dialupAccess: YES
