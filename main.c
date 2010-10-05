@@ -55,6 +55,12 @@
 #define LDAP_FILT_MAXSIZ 1024
 #endif /* !LDAP_FILT_MAXSIZ */
 
+#ifdef DEBUG
+#define LDAP_DBG(msg, args...) info("[LDAP DEBUG] " msg, ## args)
+#else /* DEBUG */
+#define LDAP_DBG(msg, args...)
+#endif /* !DEBUG */
+
 char pppd_version[] = VERSION;
 static char rcsid[] = "$Id: main.c, v 0.12 2004/05/30 22:34:45 sitkarev Exp$";
 
@@ -194,9 +200,7 @@ static int ldap_pap_auth(char *user, char *password, char **msgp,
 	}
 
 	if (ldap_usetls) {
-#ifdef DEBUG
-		info("LDAP: Setting TLS option -> ON\n");
-#endif
+		LDAP_DBG("Setting TLS option -> ON\n");
 		if((rc = ldap_start_tls_s(ldap, NULL, NULL) != LDAP_SUCCESS)) {
             ldap_get_option(ldap, LDAP_OPT_ERROR_NUMBER, &ldap_errno);
             error("LDAP: failed to initiate TLS: %s\n", ldap_err2string(ldap_errno));
@@ -224,10 +228,7 @@ static int ldap_pap_auth(char *user, char *password, char **msgp,
 		return -1;
 	};
 
-#ifdef DEBUG
-    info("LDAP: search filter: %s\n",filter);
-#endif
-
+    LDAP_DBG("search filter: %s\n",filter);
 	/* Perform search*/
 
 	if ((rc = ldap_search_s(ldap, userbasedn, LDAP_SCOPE_SUBTREE, filter,
@@ -254,9 +255,7 @@ static int ldap_pap_auth(char *user, char *password, char **msgp,
 	}
 
 	/* Check existance of dialupAccess attribute and it's value */
-#ifdef DEBUG
-	info("LDAP: found %u entries\n",ldap_count_entries(ldap, ldap_mesg));
-#endif
+	LDAP_DBG("LDAP: found %u entries\n",ldap_count_entries(ldap, ldap_mesg));
 
 	/* radiusAuthType = LDAP ->  check it! */
 
@@ -267,17 +266,13 @@ static int ldap_pap_auth(char *user, char *password, char **msgp,
     if (ldap_count_values(ldap_values) != 0) {
 
         if ((strncasecmp(ldap_values[0],"LDAP",4) != 0)) {
-#ifdef DEBUG
-			info("LDAP: Sorry, only authtype=LDAP is supported\n");
-#endif
+			LDAP_DBG("Sorry, only authtype=LDAP is supported\n");
 			ldap_unbind(ldap);
 			ldap_msgfree(ldap_mesg);
 			return -1;
         }
     } else {
-#ifdef DEBUG
-        info("LDAP: Can not get authentication type\n");
-#endif
+        LDAP_DBG("Can not get authentication type\n");
         ldap_unbind(ldap);
         ldap_msgfree(ldap_mesg);
         return -1;
@@ -292,10 +287,7 @@ static int ldap_pap_auth(char *user, char *password, char **msgp,
 		if ((rc = snprintf(userdn,MAX_BUF,"%s",ldap_get_dn(ldap,ldap_entry))) == -1)
             warn("LDAP: user DN stripped\n");
 
-#ifdef DEBUG
-        info("LDAP: rebind DN: %s\n",userdn);
-#endif
-
+        LDAP_DBG("LDAP: rebind DN: %s\n",userdn);
 		if ((rc = ldap_simple_bind_s(ldap,userdn,password)) != LDAP_SUCCESS) {
 			error("LDAP: username or password incorrect\n");
 			*msgp = "Username or password incorrect!";
@@ -316,9 +308,7 @@ static int ldap_pap_auth(char *user, char *password, char **msgp,
 
     ldap_setoptions(ldap, ldap_mesg, &ldap_data);
 
-#ifdef DEBUG
-    info("LDAP: Auth success\n");
-#endif
+    LDAP_DBG("Auth success\n");
     *msgp = "Access OK!";
     ldap_data.access_ok = 1;
 
@@ -341,6 +331,7 @@ static void ldap_ip_down(void *opaque, int arg)
 
 static void ldap_ip_up(void *opaque, int arg)
 {
+    LDAP_DBG("ldap_ip_up notifier: lutmp %d\n", lutmp);
 	if(lutmp)
         ldap_activate_utmp(&ldap_data, devnam, ifname, peer_authname);
 }
@@ -559,9 +550,7 @@ static int ldap_setoptions(LDAP *ld, LDAPMessage *ldap_entry, struct ldap_data *
         ((ldap_count_values(ldap_values)) != 0)) {
         if ((rc = inet_pton(AF_INET, ldap_values[0],&ldap_data->addr)) > 0){
             ldap_data->address_set = 1;
-#ifdef DEBUG
-            info("LDAP: peer address is %p\n",ldap_data->addr);
-#endif
+            LDAP_DBG("peer address is %p\n",ldap_data->addr);
         } else
         {
 			switch(rc) {
@@ -581,10 +570,8 @@ static int ldap_setoptions(LDAP *ld, LDAPMessage *ldap_entry, struct ldap_data *
                                         RADIUS_IDLETIMEOUT)) != NULL ) &&
         ((ldap_count_values(ldap_values)) != 0)) {
         ldap_data->idle_time_limit = atoi(ldap_values[0]);
-#ifdef DEBUG
-		info("LDAP: peer idle timeout is %u seconds\n",
-             ldap_data->idle_time_limit);
-#endif
+		LDAP_DBG("peer idle timeout is %u seconds\n",
+                 ldap_data->idle_time_limit);
         idle_time_limit = ldap_data->idle_time_limit;
 	}
 
@@ -592,10 +579,8 @@ static int ldap_setoptions(LDAP *ld, LDAPMessage *ldap_entry, struct ldap_data *
                                         RADIUS_SESSIONTIMEOUT)) != NULL ) &&
         ((ldap_count_values(ldap_values)) != 0)) {
         ldap_data->maxconnect = atoi(ldap_values[0]);
-#ifdef DEBUG
-		info("LDAP: peer session timeout is %u seconds\n",
-             ldap_data->maxconnect);
-#endif
+		LDAP_DBG("peer session timeout is %u seconds\n",
+                 ldap_data->maxconnect);
 		maxconnect = ldap_data->maxconnect;
 	}
 
