@@ -21,15 +21,20 @@ PLUGIN := pppd_ldap.so
 TOOLS  := ppp_list
 
 INCLUDE := -I$(INCDIR)/pppd
-CFLAGS  += -O2 -fPIC $(INCLUDE)
+CFLAGS  += -O2 $(INCLUDE) -fPIC
 LDFLAGS += -lldap -lc
 
 
 ifdef DEBUG
 CFLAGS += -DDEBUG=1
 endif
+
 ifdef TLS
 CFLAGS += -DOPT_WITH_TLS=1
+endif
+
+ifdef CHAPMS
+CFLAGS += -DCHAPMS
 endif
 
 define get_pppd_version
@@ -38,17 +43,14 @@ endef
 
 all : $(PLUGIN) $(TOOLS)
 
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@ $(LDFLAGS)
+
 ppp_list: utmplib.o
 	$(CC) $(CFLAGS) ppp_list.c -o ppp_list utmplib.o $(LDFLAGS)
 
-pppd_ldap.so: main.o utmplib.o
-	$(CC) -shared -o pppd_ldap.so utmplib.o main.o $(LDFLAGS)
-
-main.o: main.c
-	$(CC) $(CFLAGS) -c -o main.o main.c
-
-utmplib.o: utmplib.c
-	$(CC) $(CFLAGS) -c -o utmplib.o utmplib.c
+pppd_ldap.so: main.o utmplib.o ldap_utils.o chap_verifiers.o
+	$(CC) -shared -o $@ $^ $(LDFLAGS)
 
 install: all
 	$(eval PPPD_VERSION := $(call get_pppd_version))
