@@ -137,7 +137,7 @@ can_auth_user(LDAP *ldap, LDAPMessage *entry)
 
 		vals = ldap_get_values_len(ldap, entry, RADIUS_AUTHTYPE);
 		if (!vals) {
-				pdld_ldap_error("Failed to get authtype %s", RADIUS_AUTHTYPE);
+				pdld_ldap_error(ldap, "Failed to get authtype %s", RADIUS_AUTHTYPE);
 				goto out;
 		}
 		if (strncasecmp(vals[0]->bv_val, "LDAP", 4) != 0) {
@@ -148,7 +148,7 @@ can_auth_user(LDAP *ldap, LDAPMessage *entry)
 		ldap_value_free_len(vals);
 		vals = ldap_get_values_len(ldap, entry, RADIUS_DIALUPACCESS);
 		if (!vals) {
-				pdld_ldap_error("Failed to get value of attribute %s",
+				pdld_ldap_error(ldap, "Failed to get value of attribute %s",
 								RADIUS_DIALUPACCESS);
 				goto out;
 		}
@@ -210,11 +210,11 @@ ldap_chap_verify(char *user, char *ourname, int id,
 		loged_in = 1;
 		err = get_user_ldap_msg(ldap, user, &result_msg);
 		if (err) {
-				pdld_ldap_error("Failed to find LDAP user %s", user);
+				pdld_ldap_error(ldap, "Failed to find LDAP user %s", user);
 				goto reject_auth;
 		}
 		if (!result_msg) {
-				pdld_ldap_error("No such user: %s", user);
+				pdld_ldap_error(ldap, "No such user: %s", user);
 				goto reject_auth;
 		}
 
@@ -234,19 +234,21 @@ ldap_chap_verify(char *user, char *ourname, int id,
 				break;
 		}
 
-		ok = ldap_chap_md5_verify(ldap, ldap_entry, user, id,
-								  digest, challenge, response,
-								  message, message_space);
+		ok = verifier(ldap, ldap_entry, user, id,
+					  digest, challenge, response,
+					  message, message_space);
 		if (!ok)
 				goto reject_auth;
 
-		ldap_freemsg(result_msg);
+		PDLD_DBG("User %s was successfully authenticated. Access granted.\n",
+				 user);
+		ldap_msgfree(result_msg);
 		ldap_logout(ldap);
 		return ok;
 
 reject_auth:
 		if (result_msg)
-				ldap_freemsg(result_msg);
+				ldap_msgfree(result_msg);
 		if (loged_in)
 				ldap_logout(ldap);
 
@@ -287,6 +289,7 @@ static int ldap_pap_auth(char *user, char *password, char **msgp,
 		LDAPMessage *ldap_mesg;
 		LDAPMessage	*ldap_entry;
 
+		PDLD_DBG("PAP_AUTH user %s\n", user);
 		/* Initiate session and bind to LDAP server */
 		sprintf(url, "ldap://%s:%d", ldap_options.host, ldap_options.port);
 		if (ldap_initialize(&ldap, url) != LDAP_SUCCESS) {

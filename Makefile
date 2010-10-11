@@ -34,7 +34,7 @@ CFLAGS += -DOPT_WITH_TLS=1
 endif
 
 ifdef CHAPMS
-CFLAGS += -DCHAPMS
+CFLAGS += -DCHAPMS=1 -DMSLANMAN=1
 endif
 
 define get_pppd_version

@@ -88,8 +88,8 @@ extern struct pppd_ldap_opts ldap_options;
 #define PDLD_DBG(msg, args...)
 #endif /* !DEBUG */
 
-#define PDLD_WARN(msg, args...) warn("[LDAP WARN]" msg, ##args)
-#define PDLD_INFO(msg, args...) info("[LDAP]" msg, ##args)
+#define PDLD_WARN(msg, args...) warn("[LDAP WARN] " msg, ##args)
+#define PDLD_INFO(msg, args...) info("[LDAP] " msg, ##args)
 
 /* plugin main functions */
 

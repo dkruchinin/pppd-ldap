@@ -13,14 +13,14 @@ configure_ldap_timeouts(LDAP *ldap)
     rc = ldap_set_option(ldap, LDAP_OPT_NETWORK_TIMEOUT,
                          &ldap_options.nettimeout);
     if (LDAP_SETOPT_ERR(rc)) {
-        LDAP_DBG("Failed to set LDAP_OPT_NETWORK_TIMEOUT to %d\n",
+        PDLD_DBG("Failed to set LDAP_OPT_NETWORK_TIMEOUT to %d\n",
                  ldap_options.nettimeout);
         return -1;
     }
 
     rc = ldap_set_option(ldap, LDAP_OPT_TIMELIMIT, &ldap_options.timeout);
     if (LDAP_SETOPT_ERR(rc)) {
-        LDAP_DBG("Failed to set LDAP_OPT_TIMELIMIT to %d\n",
+        PDLD_DBG("Failed to set LDAP_OPT_TIMELIMIT to %d\n",
                  ldap_options.timeout);
         return -1;
     }
@@ -37,13 +37,13 @@ start_tls_session(LDAP *ldap)
 
     rc = ldap_set_option(ldap, LDAP_OPT_X_TLS_HARD, &tls_opt);
     if (LDAP_SETOPT_ERR(rc)) {
-        LDAP_DBG("Failed to set LDAP_OPT_TLS_HARD to %d\n", tls_opt);
+        PDLD_DBG("Failed to set LDAP_OPT_TLS_HARD to %d\n", tls_opt);
         return -1;
     }
 
     rc = ldap_start_tls_s(ldap, NULL, NULL);
     if (rc != LDAP_SUCCESS) {
-        LDAP_DBG("Failed to start TLS session: [rc = %d]\n", rc);
+        PDLD_DBG("Failed to start TLS session: [rc = %d]\n", rc);
         return -1;
     }
 
@@ -62,7 +62,7 @@ init_ldap_session(LDAP **out_ldap)
 
     sprintf(uri, "ldap%s://%s:%d", ldap_options.usessl ? "s" : "",
             ldap_options.host, ldap_options.port);
-    LDAP_DBG("Connecting to ldap server. URI: %s\n", uri);
+    PDLD_DBG("Connecting to ldap server. URI: %s\n", uri);
 
     if ((rc = ldap_initialize(out_ldap, uri)) != LDAP_SUCCESS) {
         *out_ldap = NULL;
@@ -76,13 +76,21 @@ int
 ldap_login(LDAP *ldap)
 {
     int rc;
+	int version = LDAP_VERSION3;
+
+	rc = ldap_set_option(ldap, LDAP_OPT_PROTOCOL_VERSION, &version);
+	if (LDAP_SETOPT_ERR(rc)) {
+			PDLD_DBG("Failed to set LDAP protocol version to %d\n", version);
+			rc = -1;
+			goto out;
+	}
 
     rc = configure_ldap_timeouts(ldap);
     if (rc)
         goto out;
 
     if (ldap_options.usetls) {
-        LDAP_DBG("Starting TLS session...\n");
+        PDLD_DBG("Starting TLS session...\n");
         rc = start_tls_session(ldap);
         if (rc)
             goto out;
@@ -91,7 +99,7 @@ ldap_login(LDAP *ldap)
     rc = ldap_bind_s(ldap, ldap_options.dn, ldap_options.password,
                      LDAP_AUTH_SIMPLE);
     if (rc != LDAP_SUCCESS) {
-        LDAP_DBG("Failed to login to LDAP server using DN \"%s\"\n",
+        PDLD_DBG("Failed to login to LDAP server using DN \"%s\"\n",
                  ldap_options.dn);
         rc = -1;
         goto out;
@@ -103,7 +111,7 @@ out:
 }
 
 void
-ldap_logount(LDAP *ldap)
+ldap_logout(LDAP *ldap)
 {
     ldap_unbind(ldap);
 }
