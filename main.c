@@ -173,7 +173,7 @@ ldap_chap_verify(char *user, char *ourname, int id,
 				 char *message, int message_space)
 {
 		int challenge_len, response_len, err;
-		int loged_in = 0, ok;
+		int logged_in = 0, ok;
 		LDAP *ldap;
 		LDAPMessage *result_msg, *ldap_entry;
 		chap_verify_fn verifier = NULL;
@@ -207,7 +207,7 @@ ldap_chap_verify(char *user, char *ourname, int id,
 				goto reject_auth;
 		}
 
-		loged_in = 1;
+		logged_in = 1;
 		err = get_user_ldap_msg(ldap, user, &result_msg);
 		if (err) {
 				pdld_ldap_error(ldap, "Failed to find LDAP user %s", user);
@@ -226,12 +226,14 @@ ldap_chap_verify(char *user, char *ourname, int id,
 		case CHAP_MD5:
 				verifier = ldap_chap_md5_verify;
 				break;
+#ifdef CHAPMS
 		case CHAP_MICROSOFT:
 				verifier = ldap_chap_ms_verify;
 				break;
 		case CHAP_MICROSOFT_V2:
 				verifier = ldap_chap_ms2_verify;
 				break;
+#endif /* CHAPMS */
 		}
 
 		ok = verifier(ldap, ldap_entry, user, id,
@@ -240,16 +242,19 @@ ldap_chap_verify(char *user, char *ourname, int id,
 		if (!ok)
 				goto reject_auth;
 
+		ldap_setoptions(ldap, result_msg, &ldap_data);
 		PDLD_DBG("User %s was successfully authenticated. Access granted.\n",
 				 user);
+		ldap_data.access_ok = 1;
 		ldap_msgfree(result_msg);
 		ldap_logout(ldap);
+
 		return ok;
 
 reject_auth:
 		if (result_msg)
 				ldap_msgfree(result_msg);
-		if (loged_in)
+		if (logged_in)
 				ldap_logout(ldap);
 
 		PDLD_DBG("Authentication rejected for user %s\n", user);
@@ -275,109 +280,38 @@ static int ldap_chap_check(void)
  *			 1 - Success
  *			-1 - Error, proceed to normal pap-options file
  */
-#define LDAP_URL_LEN 512
 static int ldap_pap_auth(char *user, char *password, char **msgp,
                          struct wordlist **paddrs, struct wordlist **popts)
 {
-		int rc,ldap_errno;
-		int version = LDAP_VERSION3;
-		char filter[LDAP_FILT_MAXSIZ];
+		int rc, logged_in = 0, ok = -1;
 		char userdn[MAX_BUF];
-		char url[LDAP_URL_LEN];
-		char **ldap_values;
 		LDAP *ldap;
 		LDAPMessage *ldap_mesg;
 		LDAPMessage	*ldap_entry;
 
-		PDLD_DBG("PAP_AUTH user %s\n", user);
-		/* Initiate session and bind to LDAP server */
-		sprintf(url, "ldap://%s:%d", ldap_options.host, ldap_options.port);
-		if (ldap_initialize(&ldap, url) != LDAP_SUCCESS) {
-				error("LDAP: Failed to initialize session: %s:%d\n",
-					  strerror(errno), errno);
-				return -1;
+		PDLD_DBG("Authenticating user %s via PAP\n", user);
+		rc = init_ldap_session(&ldap);
+		if (rc != LDAP_SUCCESS) {
+				pdld_error("Failed to initialize ldap session: %s",
+						   ldap_err2string(rc));
+				return ok;
 		}
 
-		/* Set LDAP specific options such as timeout, version and tls */
-
-		if ((rc = ldap_set_option(ldap, LDAP_OPT_PROTOCOL_VERSION,
-								  &version) != LDAP_OPT_SUCCESS)) {
-				error("LDAP: failed to set protocol version\n");
-				return -1;
+		rc = ldap_login(ldap);
+		if (rc) {
+				pdld_ldap_error(ldap, "ldap_login() failed");
+				goto reject_auth;
 		}
 
-		if ((rc = ldap_set_option(ldap, LDAP_OPT_NETWORK_TIMEOUT,
-								  &ldap_options.nettimeout) != LDAP_OPT_SUCCESS)) {
-				error("LDAP: failed to set network timeout version\n");
-				return -1;
+		logged_in = 1;
+		rc = get_user_ldap_msg(ldap, user, &ldap_mesg);
+		if (rc) {
+				pdld_ldap_error(ldap, "Failed to find LDAP user %s", user);
+				goto reject_auth;
 		}
-
-		if ((rc = ldap_set_option(ldap, LDAP_OPT_TIMELIMIT,
-								  &ldap_options.timeout) != LDAP_OPT_SUCCESS)) {
-				error("LDAP: failed to set timeout option\n");
-				return -1;
-		}
-
-#ifdef OPT_WITH_TLS
-
-		/* Some servers support only LDAPS but not TLS */
-		if ((ldap_options.port == LDAPS_PORT) && ldap_options.usetls) {
-				int tls_opt = LDAP_OPT_X_TLS_HARD;
-				if ((rc = ldap_set_option(ldap, LDAP_OPT_X_TLS,
-										  (void *)&tls_opt)) != LDAP_SUCCESS) {
-						ldap_get_option(ldap, LDAP_OPT_ERROR_NUMBER, &ldap_errno);
-						error("LDAP: failed to set TLS option: %s\n", ldap_err2string(rc));
-						return -1;
-				}
-		}
-
-		if (ldap_options.usetls) {
-				PDLD_DBG("Setting TLS option -> ON\n");
-				if((rc = ldap_start_tls_s(ldap, NULL, NULL) != LDAP_SUCCESS)) {
-						ldap_get_option(ldap, LDAP_OPT_ERROR_NUMBER, &ldap_errno);
-						error("LDAP: failed to initiate TLS: %s\n", ldap_err2string(ldap_errno));
-						return -1;
-				}
-		};
-
-#endif
-
-		/* Perform binding at last */
-
-		if ((rc = ldap_bind_s(ldap, ldap_options.dn, ldap_options.password, LDAP_AUTH_SIMPLE)) != LDAP_SUCCESS) {
-				ldap_get_option(ldap, LDAP_OPT_ERROR_NUMBER, &ldap_errno);
-				error("LDAP: failed to bind: %s\n",ldap_err2string(rc));
-				ldap_unbind(ldap);
-				return -1;
-		}
-
-		/* Form a search filter from supplied peer's credentials */
-
-		if ((rc = snprintf(filter, LDAP_FILT_MAXSIZ,"(&(uid=%s)(objectClass=%s))",
-						   user, RADIUS_OBJECTCLASS)) == -1) {
-				error("LDAP: LDAP filter too big\n");
-				ldap_unbind(ldap);
-				return -1;
-		};
-
-		PDLD_DBG("search filter: %s\n",filter);
-		/* Perform search*/
-
-		if ((rc = ldap_search_s(ldap, ldap_options.userbasedn, LDAP_SCOPE_SUBTREE, filter,
-								NULL, 0, &ldap_mesg)) != LDAP_SUCCESS) {
-				ldap_get_option(ldap, LDAP_OPT_ERROR_NUMBER, &ldap_errno);
-				error("LDAP: Can't perform search: %s\n",
-					  ldap_err2string(rc));
-				ldap_unbind(ldap);
-				return -1;
-		};
-
-		/* If search returned more than 2 results or 0 - something is wrong! */
-
-		if ( ldap_mesg == NULL ){
-				info("LDAP: No such user \"%s\"\n",user);
-				ldap_unbind(ldap);
-				return -1;
+		if (ldap_mesg == NULL){
+				pdld_ldap_error(ldap, "No such user: %s", user);
+				goto reject_auth;
 		}
 
 		if ((ldap_count_entries(ldap, ldap_mesg)) > 1){
@@ -386,67 +320,41 @@ static int ldap_pap_auth(char *user, char *password, char **msgp,
 				return -1;
 		}
 
-		/* Check existance of dialupAccess attribute and it's value */
-		PDLD_DBG("LDAP: found %u entries\n",ldap_count_entries(ldap, ldap_mesg));
-
-		/* radiusAuthType = LDAP ->  check it! */
-
 		ldap_entry = ldap_first_entry(ldap, ldap_mesg);
+		if (!can_auth_user(ldap, ldap_entry))
+				goto reject_auth;
 
-		ldap_values = ldap_get_values(ldap, ldap_entry, RADIUS_AUTHTYPE);
+		/* Rebind with peers supplied credentials */
+		rc = snprintf(userdn, MAX_BUF, "%s", ldap_get_dn(ldap, ldap_entry));
+		if (rc < 0)
+				PDLD_WARN("user DN is stripped\n");
 
-		if (ldap_count_values(ldap_values) != 0) {
-
-				if ((strncasecmp(ldap_values[0],"LDAP",4) != 0)) {
-						PDLD_DBG("Sorry, only authtype=LDAP is supported\n");
-						ldap_unbind(ldap);
-						ldap_msgfree(ldap_mesg);
-						return -1;
-				}
-		} else {
-				PDLD_DBG("Can not get authentication type\n");
-				ldap_unbind(ldap);
-				ldap_msgfree(ldap_mesg);
-				return -1;
+		ok = 0;
+		PDLD_DBG("LDAP: rebind DN: %s\n", userdn);
+		rc = ldap_simple_bind_s(ldap, userdn, password);
+		if (rc != LDAP_SUCCESS) {
+				pdld_ldap_error(ldap, "username or password incorrect");
+				*msgp = "Username or password incorrect!";
+				goto reject_auth;
 		}
-
-		ldap_values = ldap_get_values(ldap, ldap_entry, RADIUS_DIALUPACCESS);
-		if (((strncasecmp(ldap_values[0],"YES",3) == 0)) ||
-			((strncasecmp(ldap_values[0],"FALSE",5)) != 0)) {
-
-				/* Rebind with peers supplied credentials */
-
-				if ((rc = snprintf(userdn,MAX_BUF,"%s",ldap_get_dn(ldap,ldap_entry))) == -1)
-						warn("LDAP: user DN stripped\n");
-
-				PDLD_DBG("LDAP: rebind DN: %s\n",userdn);
-				if ((rc = ldap_simple_bind_s(ldap,userdn,password)) != LDAP_SUCCESS) {
-						error("LDAP: username or password incorrect\n");
-						*msgp = "Username or password incorrect!";
-						ldap_unbind(ldap);
-						ldap_msgfree(ldap_mesg);
-						return 0;
-				}
-		} else {
-
-				error("LDAP: dialup access disabled for user %s\n",user);
-				*msgp = "Dial-in access not allowed!";
-				ldap_unbind(ldap);
-				ldap_msgfree(ldap_mesg);
-				return 0;
-		}
-
-		/* Set pppd options */
 
 		ldap_setoptions(ldap, ldap_mesg, &ldap_data);
-
-		PDLD_DBG("Auth success\n");
+		PDLD_DBG("User %s was successfully authenticated. Access granted.\n",
+				 user);
 		*msgp = "Access OK!";
 		ldap_data.access_ok = 1;
-
-		/* Write ppp_utmp data in place */
+		ldap_msgfree(ldap_mesg);
+		ldap_logout(ldap);
 
 		return 1;
+reject_auth:
+		if (ldap_mesg)
+				ldap_msgfree(ldap_mesg);
+		if (logged_in)
+				ldap_logout(ldap);
+
+		PDLD_DBG("Authentication rejected for user %s\n", user);
+		return ok;
 }
 
 static void ldap_ip_choose(u_int32_t *addrp)
