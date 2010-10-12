@@ -80,39 +80,39 @@ ChallengeResponse(u_char *challenge,
 				  u_char PasswordHash[MD4_SIGNATURE_SIZE],
 				  u_char response[24])
 {
-		u_char	  ZPasswordHash[21];
+	u_char	  ZPasswordHash[21];
 
-		BZERO(ZPasswordHash, sizeof(ZPasswordHash));
-		BCOPY(PasswordHash, ZPasswordHash, MD4_SIGNATURE_SIZE);
+	BZERO(ZPasswordHash, sizeof(ZPasswordHash));
+	BCOPY(PasswordHash, ZPasswordHash, MD4_SIGNATURE_SIZE);
 
-		(void) DesSetkey(ZPasswordHash + 0);
-		DesEncrypt(challenge, response + 0);
-		(void) DesSetkey(ZPasswordHash + 7);
-		DesEncrypt(challenge, response + 8);
-		(void) DesSetkey(ZPasswordHash + 14);
-		DesEncrypt(challenge, response + 16);
+	(void) DesSetkey(ZPasswordHash + 0);
+	DesEncrypt(challenge, response + 0);
+	(void) DesSetkey(ZPasswordHash + 7);
+	DesEncrypt(challenge, response + 8);
+	(void) DesSetkey(ZPasswordHash + 14);
+	DesEncrypt(challenge, response + 16);
 }
 
 static void
 NTPasswordHash(u_char *secret, int secret_len, u_char hash[MD4_SIGNATURE_SIZE])
 {
 #ifdef __NetBSD__
-		/* NetBSD uses the libc md4 routines which take bytes instead of bits */
-		int			mdlen = secret_len;
+	/* NetBSD uses the libc md4 routines which take bytes instead of bits */
+	int			mdlen = secret_len;
 #else
-		int			mdlen = secret_len * 8;
+	int			mdlen = secret_len * 8;
 #endif
-		MD4_CTX		md4Context;
+	MD4_CTX		md4Context;
 
-		MD4Init(&md4Context);
-		/* MD4Update can take at most 64 bytes at a time */
-		while (mdlen > 512) {
-				MD4Update(&md4Context, secret, 512);
-				secret += 64;
-				mdlen -= 512;
-		}
-		MD4Update(&md4Context, secret, mdlen);
-		MD4Final(hash, &md4Context);
+	MD4Init(&md4Context);
+	/* MD4Update can take at most 64 bytes at a time */
+	while (mdlen > 512) {
+		MD4Update(&md4Context, secret, 512);
+		secret += 64;
+		mdlen -= 512;
+	}
+	MD4Update(&md4Context, secret, mdlen);
+	MD4Final(hash, &md4Context);
 
 }
 
@@ -125,87 +125,87 @@ NTPasswordHash(u_char *secret, int secret_len, u_char hash[MD4_SIGNATURE_SIZE])
 static void
 Set_Start_Key(u_char *rchallenge, u_char PasswordHash[MD4_SIGNATURE_SIZE])
 {
-		u_char	PasswordHashHash[MD4_SIGNATURE_SIZE];
+	u_char	PasswordHashHash[MD4_SIGNATURE_SIZE];
 
-		/* Hash (x2) the Unicode version of the secret (== password). */
-		NTPasswordHash(PasswordHash, sizeof(PasswordHash), PasswordHashHash);
-		mppe_set_keys(rchallenge, PasswordHashHash);
+	/* Hash (x2) the Unicode version of the secret (== password). */
+	NTPasswordHash(PasswordHash, sizeof(PasswordHash), PasswordHashHash);
+	mppe_set_keys(rchallenge, PasswordHashHash);
 }
 
 #endif /* MPPE */
 
 static char *ldap_ptypes[] = {
-		"crypt",
-		"md5",
-		"sha",
-		"ssha",
-		NULL
+	"crypt",
+	"md5",
+	"sha",
+	"ssha",
+	NULL
 };
 
 static int
 get_ldap_userpassword(LDAP *ldap, LDAPMessage *entry,
 					  char *secret, int maxsecret_len)
 {
-		struct berval **bvals;
-		char *p, *passwd;
-		int passwd_len = -1;
+	struct berval **bvals;
+	char *p, *passwd;
+	int passwd_len = -1;
 
-		bvals = ldap_get_values_len(ldap, entry, LDAP_USERPASSWORD);
-		if (!bvals) {
-				pdld_ldap_error(ldap, "Failed to get userPassword field value");
-				goto out;
-		}
+	bvals = ldap_get_values_len(ldap, entry, LDAP_USERPASSWORD);
+	if (!bvals) {
+		pdld_ldap_error(ldap, "Failed to get userPassword field value");
+		goto out;
+	}
 
-		passwd = bvals[0]->bv_val;
+	passwd = bvals[0]->bv_val;
+
+	/*
+	 * userPassword LDAP field can be either plain text or
+	 * hashed/encrypted. If password is encrypted or hashed
+	 * it has the following format:
+	 * {HASH_NAME/CRYPTO}hashed/encrypted_password
+	 * Otherwise password is plain text.
+	 */
+	if ((passwd[0] == '{') &&
+		((p = strchr(passwd + 1, '}')) != NULL)) {
+		char **type;
+		int len = p - (passwd + 1);
 
 		/*
-		 * userPassword LDAP field can be either plain text or
-		 * hashed/encrypted. If password is encrypted or hashed
-		 * it has the following format:
-		 * {HASH_NAME/CRYPTO}hashed/encrypted_password
-		 * Otherwise password is plain text.
+		 * Even if userPassword has value like "{sometext}password",
+		 * it actually could be in plain-text format. Nothing forbids
+		 * user from making it password looking like {texthere}textthere
+		 * To make it clear we compare text in figure brakets with
+		 * list of names of known LDAP password holding mehtods. If
+		 * the text doesn't correspond to any, then we assume that it's
+		 * a plain-text password.
 		 */
-		if ((passwd[0] == '{') &&
-			((p = strchr(passwd + 1, '}')) != NULL)) {
-				char **type;
-				int len = p - (passwd + 1);
-
-				/*
-				 * Even if userPassword has value like "{sometext}password",
-				 * it actually could be in plain-text format. Nothing forbids
-				 * user from making it password looking like {texthere}textthere
-				 * To make it clear we compare text in figure brakets with
-				 * list of names of known LDAP password holding mehtods. If
-				 * the text doesn't correspond to any, then we assume that it's
-				 * a plain-text password.
-				 */
-				if (len > 0) {
-						for (type = ldap_ptypes; *type; type++) {
-								if (!strncasecmp(*type, passwd + 1, len)) {
-										PDLD_DBG("userPassword is not plain-text: "
-												 "password type is %s\n", *type);
-										goto out;
-								}
-						}
+		if (len > 0) {
+			for (type = ldap_ptypes; *type; type++) {
+				if (!strncasecmp(*type, passwd + 1, len)) {
+					PDLD_DBG("userPassword is not plain-text: "
+							 "password type is %s\n", *type);
+					goto out;
 				}
+			}
 		}
+	}
 
-		passwd_len = bvals[0]->bv_len;
-		if (passwd_len > maxsecret_len) {
-				PDLD_DBG("userPassword is too long: %d"
-						 "(%d bytes was expected)\n",
-						 passwd_len, maxsecret_len);
-				passwd_len = -1;
-				goto out;
-		}
+	passwd_len = bvals[0]->bv_len;
+	if (passwd_len > maxsecret_len) {
+		PDLD_DBG("userPassword is too long: %d"
+				 "(%d bytes was expected)\n",
+				 passwd_len, maxsecret_len);
+		passwd_len = -1;
+		goto out;
+	}
 
-		bzero(secret, maxsecret_len);
-		strncpy(secret, passwd, passwd_len);
+	bzero(secret, maxsecret_len);
+	strncpy(secret, passwd, passwd_len);
 out:
-		if (bvals)
-				ldap_value_free_len(bvals);
+	if (bvals)
+		ldap_value_free_len(bvals);
 
-		return passwd_len;
+	return passwd_len;
 }
 
 /*
@@ -215,59 +215,59 @@ out:
 static u_char
 xdigit(u_char c)
 {
-		if (c >= '0' && c <= '9')
-				return c - '0';
-		if (c >= 'A' && c <= 'F')
-				return c - 'A' + 10;
-		if (c >= 'a' && c <= 'f')
-				return c - 'a' + 10;
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
 
-		/* not a hex */
-		return 0;
+	/* not a hex */
+	return 0;
 }
 
 static int
 get_ldap_passwordhash(LDAP *ldap, LDAPMessage *entry,
 					  char *attr, u_char pwhash[MD4_SIGNATURE_SIZE])
 {
-		struct berval **bvals;
-		u_char *hex;
-		int i, ret = -1;
+	struct berval **bvals;
+	u_char *hex;
+	int i, ret = -1;
 
-		bvals = ldap_get_values_len(ldap, entry, attr);
-		if (!bvals) {
-				pdld_ldap_error(ldap, "Failed to get %s password hsah", attr);
-				goto out;
-		}
+	bvals = ldap_get_values_len(ldap, entry, attr);
+	if (!bvals) {
+		pdld_ldap_error(ldap, "Failed to get %s password hsah", attr);
+		goto out;
+	}
 
-		/*
-		 * LDAP returns SambaNTPassword and SambaLMPassword as hex strings.
-		 * Hash hex string should be 32 bytes long and correspond to 16-bytes
-		 * MD4 hash.
-		 */
-		if (bvals[0]->bv_len != MD4_SIGNATURE_SIZE * 2) {
-				PDLD_WARN("%s password hash has insufficient "
-						  "length %d (%d expected)",
-						  attr, bvals[0]->bv_len, MD4_SIGNATURE_SIZE * 2);
-				goto out;
-		}
+	/*
+	 * LDAP returns SambaNTPassword and SambaLMPassword as hex strings.
+	 * Hash hex string should be 32 bytes long and correspond to 16-bytes
+	 * MD4 hash.
+	 */
+	if (bvals[0]->bv_len != MD4_SIGNATURE_SIZE * 2) {
+		PDLD_WARN("%s password hash has insufficient "
+				  "length %d (%d expected)",
+				  attr, bvals[0]->bv_len, MD4_SIGNATURE_SIZE * 2);
+		goto out;
+	}
 
-		/*
-		 * We have to convert 32 bytes hex string describind MD4 hash
-		 * to 16 bytes hash itself. Each 2 bytes of hex string describe
-		 * 1 byte of MD4 hash (from left to right).
-		 */
-		hex = bvals[0]->bv_val;
-		for (i = 0; i < MD4_SIGNATURE_SIZE; i++, hex += 2)
-				pwhash[i] = xdigit(hex[1]) + xdigit(hex[0]) * 0x10;
+	/*
+	 * We have to convert 32 bytes hex string describind MD4 hash
+	 * to 16 bytes hash itself. Each 2 bytes of hex string describe
+	 * 1 byte of MD4 hash (from left to right).
+	 */
+	hex = bvals[0]->bv_val;
+	for (i = 0; i < MD4_SIGNATURE_SIZE; i++, hex += 2)
+		pwhash[i] = xdigit(hex[1]) + xdigit(hex[0]) * 0x10;
 
-		ret = 0;
+	ret = 0;
 
 out:
-		if (bvals)
-				ldap_value_free_len(bvals);
+	if (bvals)
+		ldap_value_free_len(bvals);
 
-		return ret;
+	return ret;
 }
 
 /*
@@ -282,62 +282,62 @@ try_auth_chapms(LDAP *ldap, LDAPMessage *entry,
 				u_char *rchallenge, u_char *response,
 				char *message, int message_space)
 {
-		int rc, diff;
-		u_char md[MS_CHAP_RESPONSE_LEN];
-		u_char nt_pwhash[MD4_SIGNATURE_SIZE];
+	int rc, diff;
+	u_char md[MS_CHAP_RESPONSE_LEN];
+	u_char nt_pwhash[MD4_SIGNATURE_SIZE];
 #ifdef MSLANMAN
-		u_char lm_pwhash[MD4_SIGNATURE_SIZE];
+	u_char lm_pwhash[MD4_SIGNATURE_SIZE];
 #endif /* MSLANMAN */
 
-		BZERO(md, MS_CHAP_RESPONSE_LEN);
+	BZERO(md, MS_CHAP_RESPONSE_LEN);
 #ifdef MSLANMAN
-		if (!response[MS_CHAP_USENT]) {
-				PDLD_WARN("Peer request for LANMAN auth "
-						  "that is not supported\n");
-				return 0;
-		}
+	if (!response[MS_CHAP_USENT]) {
+		PDLD_WARN("Peer request for LANMAN auth "
+				  "that is not supported\n");
+		return 0;
+	}
 #endif /* !MSLANMAN */
 
-		rc = get_ldap_passwordhash(ldap, entry, SAMBA_NTPASSWORDHASH,
-								   nt_pwhash);
-		if (rc)
-				return 0;
+	rc = get_ldap_passwordhash(ldap, entry, SAMBA_NTPASSWORDHASH,
+							   nt_pwhash);
+	if (rc)
+		return 0;
 
-		ChallengeResponse(rchallenge, nt_pwhash, &md[MS_CHAP_NTRESP]);
-		md[MS_CHAP_USENT] = 1;
+	ChallengeResponse(rchallenge, nt_pwhash, &md[MS_CHAP_NTRESP]);
+	md[MS_CHAP_USENT] = 1;
 
 #ifdef MSLANMAN
-		rc = get_ldap_passwordhash(ldap, entry, SAMBA_LMPASSWORDHASH,
-								   lm_pwhash);
-		if (!rc) {
-				ChallengeResponse(rchallenge, lm_pwhash,
-								  &md[MS_CHAP_LANMANRESP]);
-				md[MS_CHAP_USENT] = !ms_lanman;
-		}
+	rc = get_ldap_passwordhash(ldap, entry, SAMBA_LMPASSWORDHASH,
+							   lm_pwhash);
+	if (!rc) {
+		ChallengeResponse(rchallenge, lm_pwhash,
+						  &md[MS_CHAP_LANMANRESP]);
+		md[MS_CHAP_USENT] = !ms_lanman;
+	}
 #endif /* MSLANMAN */
 
 #ifdef MPPE
-		Set_Start_Key(rchallenge, nt_pwhash);
+	Set_Start_Key(rchallenge, nt_pwhash);
 #endif /* !MPPE */
 
-		diff = memcmp(&response[MS_CHAP_NTRESP], &md[MS_CHAP_NTRESP],
-					  MS_CHAP_NTRESP_LEN);
+	diff = memcmp(&response[MS_CHAP_NTRESP], &md[MS_CHAP_NTRESP],
+				  MS_CHAP_NTRESP_LEN);
 
 #ifdef MSLANMAN
-		/* Determine which part of response to verify against */
-		if (!response[MS_CHAP_USENT]) {
-				PDLD_DBG("LANMAN REQ\n");
-				diff = memcmp(&response[MS_CHAP_LANMANRESP],
-							  &md[MS_CHAP_LANMANRESP], MS_CHAP_LANMANRESP_LEN);
-		}
+	/* Determine which part of response to verify against */
+	if (!response[MS_CHAP_USENT]) {
+		PDLD_DBG("LANMAN REQ\n");
+		diff = memcmp(&response[MS_CHAP_LANMANRESP],
+					  &md[MS_CHAP_LANMANRESP], MS_CHAP_LANMANRESP_LEN);
+	}
 #endif /* !MSLANMAN */
 
-		if (diff == 0) {
-				slprintf(message, message_space, "Access granted");
-				return 1;
-		}
+	if (diff == 0) {
+		slprintf(message, message_space, "Access granted");
+		return 1;
+	}
 
-		return 0;
+	return 0;
 }
 
 
@@ -352,53 +352,53 @@ try_auth_chapms2(LDAP *ldap, LDAPMessage *entry, char *user,
 				 u_char *rchallenge, u_char *response,
 				 char *message, int message_space)
 {
-		u_char md[MS_CHAP2_RESPONSE_LEN];
-		u_char Challenge[8];
-		u_char nt_pwhash[MD4_SIGNATURE_SIZE];
-		u_char PasswordHashHash[MD4_SIGNATURE_SIZE];
-		u_char saresponse[MS_AUTH_RESPONSE_LENGTH + 1];
-		u_char *PeerChallenge = &response[MS_CHAP2_PEER_CHALLENGE];
-		u_char *p = &md[MS_CHAP2_PEER_CHALLENGE];
+	u_char md[MS_CHAP2_RESPONSE_LEN];
+	u_char Challenge[8];
+	u_char nt_pwhash[MD4_SIGNATURE_SIZE];
+	u_char PasswordHashHash[MD4_SIGNATURE_SIZE];
+	u_char saresponse[MS_AUTH_RESPONSE_LENGTH + 1];
+	u_char *PeerChallenge = &response[MS_CHAP2_PEER_CHALLENGE];
+	u_char *p = &md[MS_CHAP2_PEER_CHALLENGE];
 
-		BZERO(md, sizeof(*md));
+	BZERO(md, sizeof(*md));
 
-		/* Generate the Peer-Challenge if requested, or copy it if supplied. */
-		if (!PeerChallenge) {
-				int i;
+	/* Generate the Peer-Challenge if requested, or copy it if supplied. */
+	if (!PeerChallenge) {
+		int i;
 
-				for (i = 0; i < MS_CHAP2_PEER_CHAL_LEN; i++)
-						*p++ = (u_char) (drand48() * 0xff);
-		}
-		else {
-				BCOPY(PeerChallenge, &md[MS_CHAP2_PEER_CHALLENGE],
-					  MS_CHAP2_PEER_CHAL_LEN);
-		}
+		for (i = 0; i < MS_CHAP2_PEER_CHAL_LEN; i++)
+			*p++ = (u_char) (drand48() * 0xff);
+	}
+	else {
+		BCOPY(PeerChallenge, &md[MS_CHAP2_PEER_CHALLENGE],
+			  MS_CHAP2_PEER_CHAL_LEN);
+	}
 
-		ChallengeHash(&md[MS_CHAP2_PEER_CHALLENGE], rchallenge,
-					  user, Challenge);
-		if (get_ldap_passwordhash(ldap, entry, SAMBA_NTPASSWORDHASH,
-								  nt_pwhash) < 0) {
-				return 0;
-		}
+	ChallengeHash(&md[MS_CHAP2_PEER_CHALLENGE], rchallenge,
+				  user, Challenge);
+	if (get_ldap_passwordhash(ldap, entry, SAMBA_NTPASSWORDHASH,
+							  nt_pwhash) < 0) {
+		return 0;
+	}
 
-		ChallengeResponse(Challenge, nt_pwhash, &md[MS_CHAP2_NTRESP]);
-		NTPasswordHash(nt_pwhash, sizeof(nt_pwhash), PasswordHashHash);
-		GenerateAuthenticatorResponse(PasswordHashHash,
-									  &md[MS_CHAP2_NTRESP],
-									  &md[MS_CHAP2_PEER_CHALLENGE],
-									  rchallenge, user, saresponse);
+	ChallengeResponse(Challenge, nt_pwhash, &md[MS_CHAP2_NTRESP]);
+	NTPasswordHash(nt_pwhash, sizeof(nt_pwhash), PasswordHashHash);
+	GenerateAuthenticatorResponse(PasswordHashHash,
+								  &md[MS_CHAP2_NTRESP],
+								  &md[MS_CHAP2_PEER_CHALLENGE],
+								  rchallenge, user, saresponse);
 
 #ifdef MPPE
-		mppe_set_keys2(PasswordHashHash, &md[MS_CHAP2_NTRESP],
-					   MS_CHAP2_AUTHENTICATOR);
+	mppe_set_keys2(PasswordHashHash, &md[MS_CHAP2_NTRESP],
+				   MS_CHAP2_AUTHENTICATOR);
 #endif
 	if (memcmp(&md[MS_CHAP2_NTRESP], &response[MS_CHAP2_NTRESP],
 			   MS_CHAP2_NTRESP_LEN) == 0) {
-			if (response[MS_CHAP2_FLAGS])
-					slprintf(message, message_space, "S=%s", saresponse);
-			else
-					slprintf(message, message_space, "S=%s M=%s",
-							 saresponse, "Access granted");
+		if (response[MS_CHAP2_FLAGS])
+			slprintf(message, message_space, "S=%s", saresponse);
+		else
+			slprintf(message, message_space, "S=%s M=%s",
+					 saresponse, "Access granted");
 		return 1;
 	}
 
@@ -420,19 +420,19 @@ try_standard_auth(LDAP *ldap, LDAPMessage *entry, char *user,
 				  u_char *challenge, u_char *response,
 				  char *message, int message_space)
 {
-		u_char secret[MAXSECRETLEN];
-		int secret_len, ok;
+	u_char secret[MAXSECRETLEN];
+	int secret_len, ok;
 
-		secret_len = get_ldap_userpassword(ldap, entry, secret, MAXSECRETLEN);
-		if (secret_len < 0) {
-				return -1;
-		}
+	secret_len = get_ldap_userpassword(ldap, entry, secret, MAXSECRETLEN);
+	if (secret_len < 0) {
+		return -1;
+	}
 
-		ok = digest->verify_response(id, user, secret, secret_len,
-									 challenge, response, message,
-									 message_space);
-		memset(secret, 0, sizeof(secret));
-		return ok;
+	ok = digest->verify_response(id, user, secret, secret_len,
+								 challenge, response, message,
+								 message_space);
+	memset(secret, 0, sizeof(secret));
+	return ok;
 }
 
 /*
@@ -447,25 +447,25 @@ ldap_chap_md5_verify(LDAP *ldap, LDAPMessage *entry, char *user,
 					 u_char *challenge, u_char *response,
 					 char *message, int message_space)
 {
-		int ok, challenge_len;
+	int ok, challenge_len;
 
-		challenge_len = *challenge;
-		PDLD_DBG("Authenticate user %s using CHAP\n", user);
-		ok = try_standard_auth(ldap, entry, user, id, digest,
-							   challenge, response,
-							   message, message_space);
-		if (ok < 0) {
-				PDLD_WARN("CHAP verification method supports "
-						  "only plain-text LDAP password\n");
-				goto bad;
-		}
+	challenge_len = *challenge;
+	PDLD_DBG("Authenticate user %s using CHAP\n", user);
+	ok = try_standard_auth(ldap, entry, user, id, digest,
+						   challenge, response,
+						   message, message_space);
+	if (ok < 0) {
+		PDLD_WARN("CHAP verification method supports "
+				  "only plain-text LDAP password\n");
+		goto bad;
+	}
 
-		return ok;
+	return ok;
 
 bad:
-		slprintf(message, message_space, "E=691 R=1 C=%0.*B V=0",
-				 challenge_len, challenge + 1);
-		return 0;
+	slprintf(message, message_space, "E=691 R=1 C=%0.*B V=0",
+			 challenge_len, challenge + 1);
+	return 0;
 }
 
 int
@@ -474,42 +474,42 @@ ldap_chap_ms_verify(LDAP *ldap, LDAPMessage *entry, char *user,
 					u_char *challenge, u_char *response,
 					char *message, int message_space)
 {
-		int ok;
-		int challenge_len, response_len;
+	int ok;
+	int challenge_len, response_len;
 
-		challenge_len = *challenge;
-		response_len = *response;
+	challenge_len = *challenge;
+	response_len = *response;
 
-		PDLD_DBG("Authenticate %s using CHAPMS\n", user);
-		if (response_len != MS_CHAP_RESPONSE_LEN) {
-				PDLD_DBG("Bad response length: %d (%d was expected)\n",
-						 response_len, MS_CHAP_RESPONSE_LEN);
-				goto bad;
-		}
+	PDLD_DBG("Authenticate %s using CHAPMS\n", user);
+	if (response_len != MS_CHAP_RESPONSE_LEN) {
+		PDLD_DBG("Bad response length: %d (%d was expected)\n",
+				 response_len, MS_CHAP_RESPONSE_LEN);
+		goto bad;
+	}
 
-		PDLD_DBG("Trying MSCHAP using SambaNTPassword...\n");
-		ok = try_auth_chapms(ldap, entry, challenge + 1, response + 1,
-							 message, message_space);
-		if (ok) {
-				PDLD_DBG("Succeed\n");
-				return 1;
-		}
+	PDLD_DBG("Trying MSCHAP using SambaNTPassword...\n");
+	ok = try_auth_chapms(ldap, entry, challenge + 1, response + 1,
+						 message, message_space);
+	if (ok) {
+		PDLD_DBG("Succeed\n");
+		return 1;
+	}
 
-		PDLD_DBG("Failed\nTrying MSCHAP using userPassword...\n");
-		ok = try_standard_auth(ldap, entry, user, id, digest,
-							   challenge, response,
-							   message, message_space);
-		if (ok < 0) {
-				PDLD_DBG("Failed\n");
-				goto bad;
-		}
+	PDLD_DBG("Failed\nTrying MSCHAP using userPassword...\n");
+	ok = try_standard_auth(ldap, entry, user, id, digest,
+						   challenge, response,
+						   message, message_space);
+	if (ok < 0) {
+		PDLD_DBG("Failed\n");
+		goto bad;
+	}
 
-		return ok;
+	return ok;
 
 bad:
-		slprintf(message, message_space, "E=691 R=1 C=%0.*B V=0",
-				 challenge_len, challenge);
-		return 0;
+	slprintf(message, message_space, "E=691 R=1 C=%0.*B V=0",
+			 challenge_len, challenge);
+	return 0;
 
 }
 
@@ -519,40 +519,40 @@ ldap_chap_ms2_verify(LDAP *ldap, LDAPMessage *entry, char *user,
 					 u_char *challenge, u_char *response,
 					 char *message, int message_space)
 {
-		int challenge_len, response_len, ok;
+	int challenge_len, response_len, ok;
 
-		challenge_len = *challenge;
-		response_len = *response;
+	challenge_len = *challenge;
+	response_len = *response;
 
-		PDLD_DBG("Authenticate %s using MSCHAP-V2\n", user);
-		if (response_len != MS_CHAP2_RESPONSE_LEN) {
-				PDLD_DBG("Bad response length: %d (%d was expected)\n",
-						 response_len, MS_CHAP2_RESPONSE_LEN);
-				goto bad;
-		}
+	PDLD_DBG("Authenticate %s using MSCHAP-V2\n", user);
+	if (response_len != MS_CHAP2_RESPONSE_LEN) {
+		PDLD_DBG("Bad response length: %d (%d was expected)\n",
+				 response_len, MS_CHAP2_RESPONSE_LEN);
+		goto bad;
+	}
 
-		PDLD_DBG("Trying CHAPMS-V2 using SamabNTPassword...\n");
-		ok = try_auth_chapms2(ldap, entry, user, challenge + 1, response + 1,
-							  message, message_space);
-		if (ok) {
-				PDLD_DBG("Succeed\n");
-				return 1;
-		}
+	PDLD_DBG("Trying CHAPMS-V2 using SamabNTPassword...\n");
+	ok = try_auth_chapms2(ldap, entry, user, challenge + 1, response + 1,
+						  message, message_space);
+	if (ok) {
+		PDLD_DBG("Succeed\n");
+		return 1;
+	}
 
-		PDLD_DBG("Failed\nTrying CHAPMS-V2 using userPassword...\n");
-		ok = try_standard_auth(ldap, entry, user, id, digest,
-							   challenge, response,
-							   message, message_space);
-		if (ok < 0) {
-				PDLD_DBG("Faield\n");
-				goto bad;
-		}
+	PDLD_DBG("Failed\nTrying CHAPMS-V2 using userPassword...\n");
+	ok = try_standard_auth(ldap, entry, user, id, digest,
+						   challenge, response,
+						   message, message_space);
+	if (ok < 0) {
+		PDLD_DBG("Faield\n");
+		goto bad;
+	}
 
-		return ok;
+	return ok;
 
 bad:
-		slprintf(message, message_space, "E=691 R=1 C=%0.*B V=0 M=%s",
-				 challenge_len, challenge + 1, "Access denied");
-		return 0;
+	slprintf(message, message_space, "E=691 R=1 C=%0.*B V=0 M=%s",
+			 challenge_len, challenge + 1, "Access denied");
+	return 0;
 
 }
