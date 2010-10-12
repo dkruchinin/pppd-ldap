@@ -503,6 +503,11 @@ ldap_chap_ms_verify(LDAP *ldap, LDAPMessage *entry, char *user,
 		PDLD_DBG("Failed\n");
 		goto bad;
 	}
+	if (!ok) {
+		PDLD_WARN("MSCHAP authentication works only if either "
+				  "userPasswrod is in plain-text or if SambaNTPassword "
+				  "field is present!\n");
+	}
 
 	return ok;
 
@@ -546,6 +551,11 @@ ldap_chap_ms2_verify(LDAP *ldap, LDAPMessage *entry, char *user,
 	if (ok < 0) {
 		PDLD_DBG("Faield\n");
 		goto bad;
+	}
+	if (!ok) {
+		PDLD_WARN("MSCHAP-v2 authentication works only if either "
+				  "userPasswrod is in plain-text or if SambaNTPassword "
+				  "field is present!\n");
 	}
 
 	return ok;

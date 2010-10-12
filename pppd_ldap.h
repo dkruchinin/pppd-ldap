@@ -28,11 +28,11 @@
 /* Radius-LDAPv3 schema definitions */
 
 #define RADIUS_OBJECTCLASS		"radiusProfile"
-#define RADIUS_DIALUPACCESS 	"dialupAccess"
+#define RADIUS_DIALUPACCESS		"dialupAccess"
 #define RADIUS_FRAMEDIPADDRESS	"radiusFramedIPAddress"
 #define RADIUS_FRAMEDMRU		"radiusFramedMTU"
 #define RADIUS_IDLETIMEOUT		"radiusIdleTimeout"
-#define RADIUS_SESSIONTIMEOUT 	"radiusSessionTimeout"
+#define RADIUS_SESSIONTIMEOUT	"radiusSessionTimeout"
 #define RADIUS_AUTHTYPE			"radiusAuthType"
 #define LDAP_USERPASSWORD       "userPassword"
 #define SAMBA_NTPASSWORDHASH    "sambaNTPassword"
@@ -54,22 +54,22 @@ struct ldap_data {
 };
 
 struct pppd_ldap_opts {
-		char host[MAX_BUF];
-		char dn[MAX_BUF];
-		char password[MAX_BUF];
-		char userbasedn[MAX_BUF];
-		int	port;
-		int	timeout;
-		int	nettimeout;
-		bool usetls;
-		bool lutmp;
-		bool usessl;
+	char host[MAX_BUF];
+	char dn[MAX_BUF];
+	char password[MAX_BUF];
+	char userbasedn[MAX_BUF];
+	int	port;
+	int	timeout;
+	int	nettimeout;
+	bool usetls;
+	bool lutmp;
+	bool debug;
 };
 
 typedef int (*chap_verify_fn)(LDAP *ldap, LDAPMessage *entry, char *user,
-                              int id, struct chap_digest_type *digest,
-                              u_char *challenge, u_char *response,
-                              char *message, int message_space);
+							  int id, struct chap_digest_type *digest,
+							  u_char *challenge, u_char *response,
+							  char *message, int message_space);
 
 extern struct pppd_ldap_opts ldap_options;
 
@@ -78,15 +78,12 @@ extern struct pppd_ldap_opts ldap_options;
 #endif /* !LDAP_FILT_MAXSIZ */
 
 #define pdld_ldap_error(ldap, fmt, args...)                         \
-    __pppd_ldap_error(ldap, __FUNCTION__, __LINE__, fmt, ##args)
+	__pppd_ldap_error(ldap, __FUNCTION__, __LINE__, fmt, ##args)
 #define pdld_error(fmt, args...)                                    \
-    __pppd_ldap_error(NULL, __FUNCTION__, __LINE__, fmt, ##args)
+	__pppd_ldap_error(NULL, __FUNCTION__, __LINE__, fmt, ##args)
 
-#ifdef DEBUG
-#define PDLD_DBG(msg, args...) info("[LDAP DEBUG] " msg, ##args)
-#else /* DEBUG */
-#define PDLD_DBG(msg, args...)
-#endif /* !DEBUG */
+#define PDLD_DBG(msg, args...) \
+	if (ldap_options.debug) { info("[LDAP DEBUG] " msg, ##args); }
 
 #define PDLD_WARN(msg, args...) warn("[LDAP WARN] " msg, ##args)
 #define PDLD_INFO(msg, args...) info("[LDAP] " msg, ##args)
@@ -99,49 +96,18 @@ void ldap_logount(LDAP *ldap);
 int get_user_ldap_msg(LDAP *ldap, const char *uname, LDAPMessage **res_msg);
 
 int ldap_chap_md5_verify(LDAP *ldap, LDAPMessage *entry, char *user,
-                         int id, struct chap_digest_type *digest,
-                         u_char *challenge, u_char *response,
-                         char *message, int message_space);
+						 int id, struct chap_digest_type *digest,
+						 u_char *challenge, u_char *response,
+						 char *message, int message_space);
 #ifdef CHAPMS
 int ldap_chap_ms_verify(LDAP *ldap, LDAPMessage *entry, char *user,
-                        int id, struct chap_digest_type *digest,
-                        u_char *challenge, u_char *response,
-                        char *message, int message_space);
+						int id, struct chap_digest_type *digest,
+						u_char *challenge, u_char *response,
+						char *message, int message_space);
 int ldap_chap_ms2_verify(LDAP *ldap, LDAPMessage *entry, char *user,
-                         int id, struct chap_digest_type *digest,
-                         u_char *challenge, u_char *response,
-                         char *message, int message_space);
+						 int id, struct chap_digest_type *digest,
+						 u_char *challenge, u_char *response,
+						 char *message, int message_space);
 
 #endif /* CHAPMS */
-
-static int
-ldap_pap_auth(char *user, char *password, char **msgp,
-	struct wordlist **paddrs, struct wordlist **popts);
-
-static void
-ldap_ip_choose(u_int32_t *addrp);
-
-static int
-ldap_address_allowed(u_int32_t addr);
-
-static int
-ldap_pap_check(void);
-
-static int
-ldap_setoptions(LDAP *ld, LDAPMessage *mesg,
-	struct ldap_data *ldap_data);
-
-static void
-ldap_ip_down(void *opaque, int arg);
-
-static void
-ldap_ip_up(void *opaque, int arg);
-
-static int
-ldap_activate_utmp(struct ldap_data *ldap_data,
-	char *devnam, char *ppp_devname, char *user);
-
-static int
-ldap_deactivate_utmp(char *devnam);
-
 #endif /* PPPD_LDAP_H */

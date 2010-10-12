@@ -2,7 +2,6 @@
 #include "pppd.h"
 #include "pppd_ldap.h"
 
-#define LDAP_URI_LEN 512
 #define LDAP_SETOPT_ERR(rc) ((rc) != LDAP_OPT_SUCCESS)
 
 static int
@@ -32,13 +31,16 @@ static int
 start_tls_session(LDAP *ldap)
 {
 #ifdef LDAP_OPT_X_TLS
-	int tls_opt = LDAP_OPT_X_TLS_HARD;
 	int rc;
 
-	rc = ldap_set_option(ldap, LDAP_OPT_X_TLS_HARD, &tls_opt);
-	if (LDAP_SETOPT_ERR(rc)) {
-		PDLD_DBG("Failed to set LDAP_OPT_TLS_HARD to %d\n", tls_opt);
-		return -1;
+	if (ldap_options.usetls && ldap_options.port == LDAPS_PORT) {
+		int tls_opt = LDAP_OPT_X_TLS_HARD;
+
+		rc = ldap_set_option(ldap, LDAP_OPT_X_TLS, &tls_opt);
+		if (LDAP_SETOPT_ERR(rc)) {
+			PDLD_DBG("Failed to set LDAP_OPT_X_TLS to %d\n", tls_opt);
+			return -1;
+		}
 	}
 
 	rc = ldap_start_tls_s(ldap, NULL, NULL);
@@ -57,15 +59,14 @@ start_tls_session(LDAP *ldap)
 int
 init_ldap_session(LDAP **out_ldap)
 {
-	char uri[LDAP_URI_LEN];
-	int rc;
+	int rc = 0;
 
-	sprintf(uri, "ldap%s://%s:%d", ldap_options.usessl ? "s" : "",
-			ldap_options.host, ldap_options.port);
-	PDLD_DBG("Connecting to ldap server. URI: %s\n", uri);
+	PDLD_DBG("Connecting to ldap server: %s:%d\n",
+			 ldap_options.host, ldap_options.port);
 
-	if ((rc = ldap_initialize(out_ldap, uri)) != LDAP_SUCCESS) {
-		*out_ldap = NULL;
+	*out_ldap = ldap_init(ldap_options.host, ldap_options.port);
+	if (*out_ldap == NULL) {
+		rc = -1;
 	}
 
 	return rc;
@@ -155,10 +156,10 @@ __pppd_ldap_error(LDAP *ldap, const char *fn,
 		ldap_get_option(ldap, LDAP_OPT_ERROR_NUMBER, &ld_errno);
 		if (ld_errno != LDAP_SUCCESS) {
 			snprintf(buf + len, MAX_BUF - len,
-					 "\n	 LD_ERRNO: [%d:%s]",
+					 "\n LD_ERRNO: [%d:%s]",
 					 ld_errno, ldap_err2string(ld_errno));
 		}
 	}
 
-	error("%s\n	   AT: %s:%d\n", buf, fn, line);
+	error("%s\n AT: %s:%d\n", buf, fn, line);
 }

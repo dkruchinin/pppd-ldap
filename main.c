@@ -7,6 +7,10 @@
  * Copyright (c) Nordcomp LTD, Syktyvkar, Russian Federation
  * Initial version written by Grigoriy Sitkarev <sitkarew@nordcomp.ru>
  *
+ * Copyright (c) Altell LTD, Dan Kruchinin <kruchinin@altell.ru>
+ * Added CHAP, MSCHAP and MSCHAP-v2 authentication types, MPPE support,
+ * code cleanup.
+ *
  * This plugin may be distributed according to the terms of the GNU
  * General Public License, version 2 or any later version.
  *
@@ -30,6 +34,11 @@
  * "lutmp" introduced. This functionality NEEDS COMPEHENSIVE TESTING.
  * v 0.11b --> v 0.12
  *
+ * 2010/10/15: Added CHAP and MSCHAP/MSCHAP-v2(with MPPE) authentication types
+ * via LDAP. CHAP works if LDAP server holds user passwords in plain-text,
+ * MSCHAP and MSCHAP-v2 work either if user passwords are in plain text or
+ * if users have their passwords in SambaNTHash LDAP attribute as NT-Hash.
+ * v 0.12 --> v0.13
  */
 
 #include <stdio.h>
@@ -82,10 +91,11 @@ static option_t options[] = {
 	{ "ldapnettimeout", o_int, &ldap_options.nettimeout,
 	  "LDAP network activity timeout",
 	  OPT_PRIV | OPT_STATIC },
-#ifdef OPT_WITH_TLS
 	{ "ldapusetls", o_bool, &ldap_options.usetls,
 	  "Connect to LDAP server using TLS", 1},
-#endif
+
+	{ "ldapdbg", o_bool, &ldap_options.debug,
+	  "Enable debug verbose messages", 1 },
 
 	{ "lutmp", o_bool, &ldap_options.lutmp,
 	  "Write session data to ppp_utmp", 1},
@@ -95,12 +105,27 @@ static option_t options[] = {
 
 static int ldap_chap_check(void);
 static int ldap_chap_verify(char *user, char *ourname, int id,
-                            struct chap_digest_type *digest,
-                            unsigned char *challenge,
-                            unsigned char *response,
-                            char *message, int message_space);
+							struct chap_digest_type *digest,
+							unsigned char *challenge,
+							unsigned char *response,
+							char *message, int message_space);
+static int ldap_pap_auth(char *user, char *password,
+						 char **msgp, struct wordlist **paddrs,
+						 struct wordlist **popts);
+static void ldap_ip_choose(u_int32_t *addrp);
+static int ldap_address_allowed(u_int32_t addr);
+static int ldap_pap_check(void);
+static int ldap_setoptions(LDAP *ld, LDAPMessage *mesg,
+						   struct ldap_data *ldap_data);
+static void ldap_ip_down(void *opaque, int arg);
+static void ldap_ip_up(void *opaque, int arg);
+static int ldap_activate_utmp(struct ldap_data *ldap_data,
+							  char *devnam, char *ppp_devname, char *user);
+static int ldap_deactivate_utmp(char *devnam);
 
-static void init_ldap_options(void)
+
+static
+void init_ldap_options(void)
 {
 	memset(&ldap_options, 0, sizeof(ldap_options));
 	strncpy(ldap_options.host, PPPD_LD_DEFAULT_HOST, MAX_BUF);
@@ -109,7 +134,8 @@ static void init_ldap_options(void)
 	ldap_options.nettimeout = PPPD_LD_DEFAULT_NETTIMEOUT;
 }
 
-int plugin_init()
+int
+plugin_init()
 {
 	init_ldap_options();
 	add_options(options);
@@ -261,9 +287,9 @@ reject_auth:
 	return 0;
 }
 
-static int ldap_chap_check(void)
+static int
+ldap_chap_check(void)
 {
-	PDLD_DBG("LDAP_CHAP_CHECK!\n");
 	return 1;
 }
 
@@ -280,13 +306,14 @@ static int ldap_chap_check(void)
  *			 1 - Success
  *			-1 - Error, proceed to normal pap-options file
  */
-static int ldap_pap_auth(char *user, char *password, char **msgp,
-                         struct wordlist **paddrs, struct wordlist **popts)
+static
+int ldap_pap_auth(char *user, char *password, char **msgp,
+				  struct wordlist **paddrs, struct wordlist **popts)
 {
 	int rc, logged_in = 0, ok = -1;
 	char userdn[MAX_BUF];
 	LDAP *ldap;
-	LDAPMessage *ldap_mesg;
+	LDAPMessage *ldap_mesg = NULL;
 	LDAPMessage	*ldap_entry;
 
 	PDLD_DBG("Authenticating user %s via PAP\n", user);
@@ -357,26 +384,29 @@ reject_auth:
 	return ok;
 }
 
-static void ldap_ip_choose(u_int32_t *addrp)
+static void
+ldap_ip_choose(u_int32_t *addrp)
 {
 	if (ldap_data.address_set)
 		*addrp = ldap_data.addr;
 }
 
-static void ldap_ip_down(void *opaque, int arg)
+static void
+ldap_ip_down(void *opaque, int arg)
 {
 	if(ldap_options.lutmp)
 		ldap_deactivate_utmp(devnam);
 }
 
-static void ldap_ip_up(void *opaque, int arg)
+static void
+ldap_ip_up(void *opaque, int arg)
 {
-	PDLD_DBG("ldap_ip_up notifier: lutmp %d\n", ldap_options.lutmp);
 	if(ldap_options.lutmp)
 		ldap_activate_utmp(&ldap_data, devnam, ifname, peer_authname);
 }
 
-static int ldap_address_allowed(u_int32_t addr)
+static
+int ldap_address_allowed(u_int32_t addr)
 {
 	/* if (ldap_data.address_set) return 1;*/
 	if (ntohl(addr) == ldap_data.addr) return 1;
@@ -389,7 +419,8 @@ static int ldap_address_allowed(u_int32_t addr)
 	return 0;
 }
 
-static int ldap_pap_check(void)
+static
+int ldap_pap_check(void)
 {
 	return 1;
 }
@@ -401,7 +432,7 @@ static int ldap_pap_check(void)
  *	PURPOSE: Writes ppp session data to ppp_utmp file
  *	ARGUMENTS:
  *	ldap_data - pointer to ldap_data structure
- *	devnam - 	tty device name ("/dev/" will be stripped)
+ *	devnam -    tty device name ("/dev/" will be stripped)
  *	ppp_devname - interface name (ppp1, ppp0, etc) associated with
  *				ppp session
  *	user -		user login name
@@ -410,8 +441,9 @@ static int ldap_pap_check(void)
  1 if success
 */
 
-static int ldap_activate_utmp(struct ldap_data *ldap_data,
-                              char *devnam, char *ppp_devname, char* user)
+static int
+ldap_activate_utmp(struct ldap_data *ldap_data,
+				   char *devnam, char *ppp_devname, char* user)
 {
 	int rc;
 	int fd;
@@ -507,14 +539,13 @@ static int ldap_activate_utmp(struct ldap_data *ldap_data,
  *	FUNCTION: ldap_deactivate_utmp(char *devnam);
  *	PURPOSE: sets ppp session data to IDLE in ppp_utmp associated with tty
  *	ARGUMENTS:
- *	devnam - 	tty device name ("/dev/" will be stripped)
+ *	devnam - tty device name ("/dev/" will be stripped)
  *
  *	RETURNS: -1 in case of error
  1 if success
 */
-
-
-static int ldap_deactivate_utmp(char *devnam)
+static int
+ldap_deactivate_utmp(char *devnam)
 {
 
 	int rc;
@@ -526,9 +557,8 @@ static int ldap_deactivate_utmp(char *devnam)
 	if(strncmp(devnam,"/dev/",5) == 0)
 		devnam += 5;
 
-#ifdef DEBUG
-	error("LDAP: deactivating %s\n",devnam);
-#endif
+	if (ldap_options.debug)
+		error("LDAP: deactivating %s\n",devnam);
 
 	if ((fd = open(UTMP, O_RDWR, 0600)) == -1){
 		error("LDAP: can't open utmp file: %s\n",
@@ -568,7 +598,8 @@ static int ldap_deactivate_utmp(char *devnam)
 /*
  *	FUNCTION: ldapset_options()
  *	PURPOSE: sets different pppd options retrieved from user's LDAP entry
- *	Currently ldap_set_options() processes radiusFramedIPAddress, radiusSessionTimeout,
+ *	Currently ldap_set_options() processes radiusFramedIPAddress,
+ *            radiusSessionTimeout,
  *	radiusIdleTimeout. Additional options should be easy.
  *
  *	ARGUMENTS:
@@ -580,7 +611,8 @@ static int ldap_deactivate_utmp(char *devnam)
  *
  */
 
-static int ldap_setoptions(LDAP *ld, LDAPMessage *ldap_entry, struct ldap_data *ldap_data)
+static int
+ldap_setoptions(LDAP *ld, LDAPMessage *ldap_entry, struct ldap_data *ldap_data)
 {
 	int rc;
 	char **ldap_values;
@@ -625,3 +657,4 @@ static int ldap_setoptions(LDAP *ld, LDAPMessage *ldap_entry, struct ldap_data *
 	}
 
 }
+
