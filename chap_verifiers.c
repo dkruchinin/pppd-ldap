@@ -55,20 +55,6 @@ bool ms_lanman = 0;/* Use LanMan password instead of NT */
 #endif /* MSLANMAN */
 
 /*
- * In order to have a possibility to build pppd_ldap out of
- * pppd plugins directory, define MPPE macro directly here.
- * Yep, I know this is an ugly crunch, but fucking ms_chap.h
- * includes damned <net/ppp-comp.h> which doesn't have
- * MPPE_MAX_KEY_LEN(I think it had the definition earlier)
- * definition that is required by ms_chap.h
- * I don't know why this shit happens and I don't want to spend
- * my time on figuring out why it has shitty smell.
- */
-#ifdef CHAPMS
-#define MPPE 1
-#endif /* CHAPMS */
-
-/*
  * Unfortunatelly ChallengeResponse, NTPasswordHash and Set_Start_Key,
  * are declared as static functions in pppd. So I had to copy-paste them
  * to make authentication work.
