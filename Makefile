@@ -7,39 +7,34 @@
 TLS=y
 #
 
-CC      ?= gcc
-LD      ?= ld
-MAKE    ?= make
-INSTALL ?= install
+DESTDIR = $(INSTROOT)/usr/local
+LIBDIR  = $(DESTDIR)/lib/pppd/$(VERSION)
+BINDIR  = $(DESTDIR)/bin
 
-DESTDIR ?= /usr/local
-INCDIR  := $(DESTDIR)/include
-LIBDIR  := $(DESTDIR)/lib
-BINDIR  := $(DESTDIR)/bin
+VERSION = $(shell awk -F '"' '/VERSION/ { print $$2; }' ../../patchlevel.h)
+
+INSTALL ?= install
 
 PLUGIN := pppd_ldap.so
 TOOLS  := ppp_list
 
-INCLUDE := -I$(INCDIR)/pppd
-CFLAGS  += -O2 $(INCLUDE) -fPIC
+INCLUDE := -I. -I../.. -I../../../include
+CFLAGS  = -O2 $(INCLUDE) -fPIC
 LDFLAGS += -lldap -lc
 
+# Uncomment this line if you don't want to include MS-CHAP and MS-CHAP-V2 supprot
+CHAPMS=y
 
-ifdef DEBUG
-CFLAGS += -DDEBUG=1
-endif
-
-ifdef TLS
-CFLAGS += -DOPT_WITH_TLS=1
-endif
+# Uncomment this line if you don't want MPPE support
+MPPE=y
 
 ifdef CHAPMS
-CFLAGS += -DCHAPMS=1 -DMSLANMAN=1
+CFLAGS += -DCHAPMS=1
 endif
 
-define get_pppd_version
-	$(shell grep VERSION $(INCDIR)/pppd/patchlevel.h | sed 's|.\([0-9.]*\)|\1|g')
-endef
+ifdef MPPE
+CFLAGS += -DMPPE=1
+endif
 
 all : $(PLUGIN) $(TOOLS)
 
@@ -53,9 +48,8 @@ pppd_ldap.so: main.o utmplib.o ldap_utils.o chap_verifiers.o
 	$(CC) -shared -o $@ $^ $(LDFLAGS)
 
 install: all
-	$(eval PPPD_VERSION := $(call get_pppd_version))
-	$(INSTALL) -d -m 755 $(LIBDIR)/pppd/$(PPPD_VERSION)
-	$(INSTALL) -c -m 6440 $(PLUGIN) $(LIBDIR)/pppd/$(PPPD_VERSION)
+	$(INSTALL) -d -m 755 $(LIBDIR)
+	$(INSTALL) -c -m 6440 $(PLUGIN) $(LIBDIR)/pppd/
 	$(INSTALL) -d -m 755 $(BINDIR)
 	$(INSTALL) -c -m 755 $(TOOLS) $(BINDIR)
 
