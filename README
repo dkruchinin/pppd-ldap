@@ -1,3 +1,15 @@
+=== Introduction ===
+
+The original project called pppd-ldap-0.12 originaly developed by
+Grigoriy Sitkarev supports only PAP authentication
+via LDAP server. The project page of pppd-ldap can be found there:
+http://sourceforge.net/projects/pppd-ldap
+
+pppd-chldap is a fork of pppd-ldap which supports CHAP/MSCHAP/MSCHAP-v2
+authentication via LDAP server. MSCHAP and MSCHAP-v2 includes MPPE support.
+
+=== Description and configuration ===
+
 This docs can be outdated. For the latest versions please refere to project page:
 http://sourceforge.net/projects/pppd-ldap
 
