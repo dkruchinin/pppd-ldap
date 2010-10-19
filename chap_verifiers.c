@@ -312,7 +312,6 @@ try_auth_chapms(LDAP *ldap, LDAPMessage *entry,
 #ifdef MSLANMAN
 	/* Determine which part of response to verify against */
 	if (!response[MS_CHAP_USENT]) {
-		PDLD_DBG("LANMAN REQ\n");
 		diff = memcmp(&response[MS_CHAP_LANMANRESP],
 					  &md[MS_CHAP_LANMANRESP], MS_CHAP_LANMANRESP_LEN);
 	}

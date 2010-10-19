@@ -8,6 +8,17 @@ http://sourceforge.net/projects/pppd-ldap
 pppd-chldap is a fork of pppd-ldap which supports CHAP/MSCHAP/MSCHAP-v2
 authentication via LDAP server. MSCHAP and MSCHAP-v2 includes MPPE support.
 
+=== CHAP/MSCHAP/MSCHAP-V2 authentification issues ===
+
+CHAP/MSCHAP/MSCHAP-V2 authentification will work only if the following
+conditions are met:
+1) CHAP will work only if userPassword attribute value is in plain-text format
+2) MSCHAP will work if either userPassword is plain-text or if authentication
+   password is held in SambaNTPassword attribute as NT-Hash.
+   (if MSLANMAN support is enabled password should be held in SambaLMPassword attribute as well)
+3) MSCHAP-V2 will work if either userPassword is plain-text or if password is held in
+   SambaNTPassword attribute.
+
 === Description and configuration ===
 
 This docs can be outdated. For the latest versions please refere to project page:
@@ -124,3 +135,7 @@ http://sourceforge.net/projects/pppd-ldap
  Enables TLS/SSL connection with LDAP server. Make sure you have specified
  correct ldaphost! If ldaphost name doesn't match server's certificate canonical
  name, connection terminates immediately.
+
+  ldapdbg
+
+ Enables additional debug information and verbose output to syslog.
