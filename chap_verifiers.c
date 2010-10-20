@@ -114,7 +114,7 @@ Set_Start_Key(u_char *rchallenge, u_char PasswordHash[MD4_SIGNATURE_SIZE])
 	u_char	PasswordHashHash[MD4_SIGNATURE_SIZE];
 
 	/* Hash (x2) the Unicode version of the secret (== password). */
-	NTPasswordHash(PasswordHash, sizeof(PasswordHash), PasswordHashHash);
+	NTPasswordHash(PasswordHash, MD4_SIGNATURE_SIZE, PasswordHashHash);
 	mppe_set_keys(rchallenge, PasswordHashHash);
 }
 
