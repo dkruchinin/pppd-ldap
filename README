@@ -37,8 +37,8 @@ http://sourceforge.net/projects/pppd-ldap
 
 	DESCRIPTION
 
- LDAP plugin pppd_ldap.so permits pppd to perform PAP (in future CHAP will be
- added) authentication against LDAP server instead of the usual
+ LDAP plugin pppd_ldap.so permits pppd to perform PAP/CHAP/MSCHAP and MSCHAP-V2 
+  authentication against LDAP server instead of the usual
  /etc/ppp/pap-secrets and other files.  LDAP plugin is linked with OpenLDAP
  -lldap library. You'll need to have development part of OpenLDAP library to
  build plugin successfuly. After successfull reception of peer's credentials,

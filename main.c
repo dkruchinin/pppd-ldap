@@ -153,6 +153,7 @@ plugin_init()
 	add_notifier(&ip_up_notifier, ldap_ip_up, NULL);
 
 	PDLD_INFO("Plugin initialized.");
+	return 0;
 }
 
 static bool
